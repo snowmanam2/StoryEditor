@@ -26,7 +26,7 @@ class StoryEditor:
 		builder = Gtk.Builder()
 		builder.add_from_file ("StoryEditor.glade")
 		
-		window = builder.get_object ("window1")
+		self.window = builder.get_object ("window1")
 		builder.get_object("fileopen").connect("activate", self.open_cb)
 		builder.get_object("toolopen").connect("clicked", self.open_cb)
 		builder.get_object("filesave").connect("activate", self.save_cb)
@@ -78,8 +78,8 @@ class StoryEditor:
 		col.add_attribute(textrenderer, "text", 1)
 		col.add_attribute(textrenderer, "background", 2)
 		
-		window.show_all()
-		window.connect ("destroy", Gtk.main_quit)
+		self.window.show_all()
+		self.window.connect ("destroy", Gtk.main_quit)
 		
 		self.json_file = ''
 		self.node = ''
@@ -152,18 +152,25 @@ class StoryEditor:
 		self.validate_choices()
 		self.validate_current_node()
 		
+		self.update_title()
+		
 		print 'Story json loaded'
 	
 	def save_file (self, path):
 		self.commit_changes()
+		
 		try:
 			f = open (path, 'w')
 			json.dump (self.story_object, f)
 			f.close()
 			self.json_file = path
+			self.update_title()
 		except OSError:
 			pass
-	
+
+	def update_title (self):
+		self.window.set_title('Story Editor - ' + self.json_file)
+
 	def node_add_cb (self, caller):
 		print self.node
 		self.commit_changes()
