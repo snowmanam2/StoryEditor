@@ -32,9 +32,9 @@ class StoryEditor:
 		builder.get_object("filesave").connect("activate", self.save_cb)
 		builder.get_object("toolsave").connect("clicked", self.save_cb)
 		builder.get_object("filesaveas").connect("activate", self.saveas_cb)
-		#builder.get_object("nodeadd").connect("clicked", self.node_add_cb)
-		#builder.get_object("nodedelete").connect("clicked", self.node_delete_cb)
-		#builder.get_object("nodecopy").connect("clicked", self.node_copy_cb)
+		builder.get_object("nodeadd").connect("clicked", self.node_add_cb)
+		builder.get_object("nodedelete").connect("clicked", self.node_delete_cb)
+		builder.get_object("nodecopy").connect("clicked", self.node_copy_cb)
 		
 		self.prompt_text = builder.get_object("textview1")
 		self.imageentry = builder.get_object("imageentry")
@@ -84,6 +84,7 @@ class StoryEditor:
 		self.json_file = ''
 		self.node = ''
 		self.story_object = {}
+		self.newnode = False
 		
 		
 	def open_cb (self, caller):
@@ -164,41 +165,94 @@ class StoryEditor:
 			pass
 	
 	def node_add_cb (self, caller):
-		dialog = Gtk.MessageDialog(self, 0, Gtk.MessageType.QUESTION,
-			Gtk.ButtonsType.OK_CANCEL, "Add a new node")
-		dialog.format_secondary_text("Enter the node name:")
-		entry = Gtk.Entry()
-		dialog.add(entry)
-		response = dialog.run()
-		if response == Gtk.ResponseType.OK:
-			name = entry.get_text()
-			print name
-		elif response == Gtk.ResponseType.CANCEL:
-			pass
-
-		dialog.destroy()
-
+		print self.node
+		self.commit_changes()
+		self.newnode = True
+	
+		it = self.liststore.append()
+		path = self.liststore.get_path(it)
+		col = self.treeview.get_column(0)
+		self.clear_form()
+		self.treeview.set_cursor(path, col, True)
+		
+	def node_copy_cb (self, caller):
+		self.commit_changes()
+		self.newnode = True
+		
+		# Get the current node name
+		rows = self.treeview.get_selection().get_selected_rows()
+		tp = rows[1][0]
+		it = self.liststore.get_iter(tp)
+		nodename = self.liststore.get_value(it, 0)
+		
+		# Make the new node
+		itnew = self.liststore.append()
+		self.liststore.set_value(itnew, 0, nodename)
+		path = self.liststore.get_path(itnew)
+		col = self.treeview.get_column(0)
+		self.treeview.set_cursor(path, col, True)
+	
+	def node_delete_cb (self, caller):
+		rows = self.treeview.get_selection().get_selected_rows()
+		tp = rows[1][0]
+		it = self.liststore.get_iter(tp)
+		node = self.liststore.get_value(it, 0)
+		if node in self.story_object.keys():
+			self.story_object.pop(node)
+		self.liststore.remove(it)
+		
+		self.validate_choices()
+		self.validate_current_node()
 	
 	def rename_node_cb (self, caller, path, new_text):
 		it = self.liststore.get_iter(path)
 		node = self.liststore.get_value(it, 0)
+		
+		# Trying to rename to a node that exists
+		if new_text in self.story_object.keys() and new_text != node:
+			if node not in self.story_object.keys():
+				self.liststore.remove(it)
+				print 'Invalid new name'
+			else:
+				self.newnode = False
+				print 'Invalid rename'
+				return
+		
+		# Check if being renamed or is a new node
+		if node in self.story_object.keys() and not self.newnode:
+			self.story_object[new_text] = self.story_object.pop(node)
+			print 'Rename'
+		else:
+			self.newnode = False
+			if new_text == '' or new_text == None or new_text in self.story_object.keys():
+				self.liststore.remove(it)
+				print 'Blank new name'
+				return
+			self.story_object[new_text] = {}
+			print 'Create new node '+new_text
+			print self.story_object[new_text]
+		
 		self.liststore.set_value(it, 0, new_text)
-		self.story_object[new_text] = self.story_object.pop(node)
-		self.validate_choices()
-		self.validate_current_node()
+		self.node = new_text
+		self.commit_changes()
 	
 	def rename_choices_node_cb (self, caller, path, new_text):
 		it = self.choicestore.get_iter(path)
 		node = self.choicestore.get_value(it, 0)
 		self.choicestore.set_value(it, 0, new_text)
 		self.commit_changes()
-		self.validate_choices()
-		self.validate_current_node()
+		self.set_node(new_text)
 		
 	def rename_choices_text_cb (self, caller, path, new_text):
 		it = self.choicestore.get_iter(path)
 		node = self.choicestore.get_value(it, 1)
 		self.choicestore.set_value(it, 1, new_text)
+	
+	def clear_form (self):
+		self.musicentry.set_text('')
+		self.imageentry.set_text('')
+		self.prompt_text.get_buffer().set_text('')
+		self.choicestore.clear()
 	
 	def commit_changes (self):
 		if self.node in self.story_object.keys():
@@ -213,7 +267,10 @@ class StoryEditor:
 			
 	
 	def set_node (self, node):
-		self.commit_changes()
+		if not node in self.story_object.keys():
+			print 'Invalid set node'
+			return
+			
 		story_node = self.story_object[node]
 		self.node = node
 		
@@ -242,6 +299,7 @@ class StoryEditor:
 					self.choicestore.set_value(it, 1, str(choice['text']))
 					
 		self.validate_current_node()
+		self.validate_choices()
 	
 	def validate_choices (self):
 		for row in self.liststore:
@@ -268,6 +326,8 @@ class StoryEditor:
 				row[2] = 'white'
 	
 	def activate_row_cb (self, caller):
+		if not self.newnode:
+			self.commit_changes()
 		rows = caller.get_selected_rows()
 		if len(rows[1]) > 0:
 			tp = rows[1][0]
