@@ -1,6 +1,8 @@
 
 import os, sys, json
-from gi.repository import Gtk
+import argparse
+from copy import deepcopy
+from gi.repository import Gtk, Gdk
 
 def sort_name (model, a, b, data):
 	na = model.get_value (a, 0)
@@ -27,11 +29,22 @@ class StoryEditor:
 		builder.add_from_file ("StoryEditor.glade")
 		
 		self.window = builder.get_object ("window1")
+		
+		group = Gtk.AccelGroup()
+		self.window.add_accel_group(group)
+		
 		builder.get_object("fileopen").connect("activate", self.open_cb)
+		builder.get_object("fileopen").add_accelerator("activate", group, ord('o'), \
+			Gdk.ModifierType.CONTROL_MASK, Gtk.AccelFlags.VISIBLE)
 		builder.get_object("toolopen").connect("clicked", self.open_cb)
 		builder.get_object("filesave").connect("activate", self.save_cb)
+		builder.get_object("filesave").add_accelerator("activate", group, ord('s'), \
+			Gdk.ModifierType.CONTROL_MASK, Gtk.AccelFlags.VISIBLE)
 		builder.get_object("toolsave").connect("clicked", self.save_cb)
 		builder.get_object("filesaveas").connect("activate", self.saveas_cb)
+		builder.get_object("filesaveas").add_accelerator("activate", group, ord('s'), \
+			Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK, Gtk.AccelFlags.VISIBLE)
+		#builder.get_object("filequit").connect("activate", Gtk.main_quit)
 		builder.get_object("nodeadd").connect("clicked", self.node_add_cb)
 		builder.get_object("nodedelete").connect("clicked", self.node_delete_cb)
 		builder.get_object("nodecopy").connect("clicked", self.node_copy_cb)
@@ -82,10 +95,12 @@ class StoryEditor:
 		
 		self.window.show_all()
 		self.window.connect ("destroy", Gtk.main_quit)
+		self.window.connect ("delete-event", self.on_exit)
 		
 		self.json_file = ''
 		self.node = ''
 		self.story_object = {}
+		self.original_object = self.story_object
 		self.newnode = False
 		
 		
@@ -117,6 +132,9 @@ class StoryEditor:
 			self.saveas_cb (caller)
 		
 	def saveas_cb (self, caller):
+		self.save_dialog()
+		
+	def save_dialog (self):
 		fcd = Gtk.FileChooserDialog("Save As...", None, Gtk.FileChooserAction.SAVE, \
 			("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.ACCEPT))
 		fcd.set_select_multiple(False)
@@ -133,13 +151,46 @@ class StoryEditor:
 		response = fcd.run()
 		if response == Gtk.ResponseType.ACCEPT:
 			path = fcd.get_filename()
+			if not path.lower().endswith('.json'):
+				path = path+'.json'
 			self.save_file(path)
+			fcd.destroy()
+			return True
+			
 		fcd.destroy()
+		return False
+	
+	def on_exit (self, window, event):
+		self.commit_changes()
+	
+		if self.story_object == self.original_object:
+			return False
+		else:
+			md = Gtk.Dialog("", self.window, Gtk.DialogFlags.DESTROY_WITH_PARENT | Gtk.DialogFlags.MODAL,
+				("Close without Saving", Gtk.ResponseType.REJECT, Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL, 
+				"Save", Gtk.ResponseType.ACCEPT) )
+			icon = Gtk.Image.new_from_stock(Gtk.STOCK_DIALOG_WARNING, Gtk.IconSize.DIALOG)
+			box = Gtk.Box()
+			box.add(icon)
+			box.add(Gtk.Label("The current file has been modified.\nDo you want to save?"))
+			md.get_content_area().pack_start(box, False, False, 0)
+			md.show_all()
+			result = md.run()
+			if result == Gtk.ResponseType.ACCEPT:
+				md.destroy()
+				return not self.save_dialog()
+				
+			if result == Gtk.ResponseType.CANCEL:
+				md.destroy()
+				return True
+			md.destroy()
+			return False
 		
 	def load_file (self, path):
 		self.json_file = path
 		f = open (path)
 		self.story_object = json.load (f)
+		self.original_object = deepcopy(self.story_object)
 		
 		self.liststore.clear()
 		
@@ -163,10 +214,12 @@ class StoryEditor:
 		
 		try:
 			f = open (path, 'w')
-			json.dump (self.story_object, f)
+			json.dump (self.story_object, f, sort_keys=True, indent=2)
 			f.close()
 			self.json_file = path
+			self.original_object = deepcopy(self.story_object)
 			self.update_title()
+			print 'Saved'
 		except OSError:
 			pass
 
@@ -363,7 +416,14 @@ class StoryEditor:
 			it = self.liststore.get_iter(tp)
 			self.set_node (self.liststore.get_value (it, 0))
 		
+parser = argparse.ArgumentParser (description='Edit a json story file')
+parser.add_argument ('infile', nargs='?')
+
+args = parser.parse_args()
 
 s = StoryEditor()
+if args.infile != None:
+	if os.path.exists(args.infile):
+		s.load_file(args.infile)
 Gtk.main()
 				
