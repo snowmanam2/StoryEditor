@@ -35,6 +35,8 @@ class StoryEditor:
 		builder.get_object("nodeadd").connect("clicked", self.node_add_cb)
 		builder.get_object("nodedelete").connect("clicked", self.node_delete_cb)
 		builder.get_object("nodecopy").connect("clicked", self.node_copy_cb)
+		builder.get_object("choiceadd").connect("clicked", self.choice_add_cb)
+		builder.get_object("choicedelete").connect("clicked", self.choice_delete_cb)
 		
 		self.prompt_text = builder.get_object("textview1")
 		self.imageentry = builder.get_object("imageentry")
@@ -242,13 +244,33 @@ class StoryEditor:
 		self.liststore.set_value(it, 0, new_text)
 		self.node = new_text
 		self.commit_changes()
+		self.validate_choices()
+		self.validate_current_node()
+	
+	def choice_add_cb (self, caller):
+		it = self.choicestore.append()
+		path = self.choicestore.get_path(it)
+		col = self.choiceview.get_column(0)
+		self.choiceview.set_cursor(path, col, True)
+		
+	def choice_delete_cb (self, caller):
+		rows = self.choiceview.get_selection().get_selected_rows()
+		if len(rows[1]) > 0:
+			tp = rows[1][0]
+			it = self.choicestore.get_iter(tp)
+			self.choicestore.remove(it)
+			self.validate_choices()
+			self.validate_current_node()
 	
 	def rename_choices_node_cb (self, caller, path, new_text):
 		it = self.choicestore.get_iter(path)
 		node = self.choicestore.get_value(it, 0)
 		self.choicestore.set_value(it, 0, new_text)
 		self.commit_changes()
-		self.set_node(new_text)
+		#self.set_node(new_text)
+		
+		self.validate_choices()
+		self.validate_current_node()
 		
 	def rename_choices_text_cb (self, caller, path, new_text):
 		it = self.choicestore.get_iter(path)
