@@ -178,6 +178,11 @@ class StoryEditor:
 			result = md.run()
 			if result == Gtk.ResponseType.ACCEPT:
 				md.destroy()
+				
+				if os.path.exists(self.json_file):
+					self.save_file(self.json_file)
+					return False
+				
 				return not self.save_dialog()
 				
 			if result == Gtk.ResponseType.CANCEL:
